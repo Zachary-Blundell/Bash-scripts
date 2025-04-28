@@ -1,0 +1,43 @@
+#!/bin/bash
+# Script for starting services and setting the necessary setting for the jellyfin server
+# This script needs both crytptdrive and lidsuspend to work properly
+
+# This starts and stops the server services
+function start_server {
+  sudo systemctl start jellyfin.service
+  sudo systemctl start cloudflared.service
+}
+function stop_server {
+  sudo systemctl stop jellyfin.service
+  sudo systemctl stop cloudflared.service
+}
+
+function help {
+  echo "-s | start to start and -x | stop to stop"
+}
+
+while [ "$1" != "" ]; do
+  case $1 in
+  -s | s | start)
+    crytptdrive -m
+    start_server
+    lidsuspend deactivate
+    exit
+    ;;
+  -x | x | stop)
+    stop_server
+    lidsuspend activate
+    exit
+    ;;
+  -h | --help | help)
+    help
+    exit
+    ;;
+  *)
+    help
+    exit
+    ;;
+  esac
+  shift
+done
+help

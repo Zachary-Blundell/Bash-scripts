@@ -1,0 +1,5 @@
+#!/bin/bash
+
+hyprctl keyword monitor ", preferred, auto, 1"
+hyprctl dispatch focusmonitor HDMI-A-6
+brave --app=http://192.168.1.11:8096/

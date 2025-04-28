@@ -1,0 +1,72 @@
+#!/bin/bash
+#  _   _       _
+# | \ | | ___ | |_ ___  ___
+# |  \| |/ _ \| __/ _ \/ __|
+# | |\  | (_) | ||  __/\__ \
+# |_| \_|\___/ \__\___||___/
+# Author : Zachary Blundell
+# This script is used for opening and autosaveing notes to github
+
+function toNotebook {
+  cd ~/Documents/Notebook/
+}
+
+goBack() {
+  cd "$OLDPWD"
+}
+
+function save {
+  toNotebook
+  echo "Adding all"
+  git add .
+  echo "Commiting Auto Save"
+  git commit -m "Auto Save"
+  echo "Pushing"
+  git push
+  goBack
+}
+function note {
+  toNotebook
+  git pull || (echo "Problme pulling from Github" && sleep 5 && exit)
+  nvim . && save
+}
+function noteNoSave {
+  toNotebook
+  nvim . && goBack
+}
+
+function usage {
+  echo "Running $0 without options will open notes and save to Github"
+  echo "Usage: $0 [OPTION]"
+  echo "Options:"
+  echo "  -n, --no-save       Open notes without saveing to Github"
+  echo "  -s, --just-save     Just save the notes to Github without opening notes"
+  echo "  -h, --help          Display this help message"
+}
+
+# Loop through the script arguments and handle each option
+while [ "$1" != "" ]; do
+  case $1 in
+  -s | s | --just-save)
+    save
+    exit
+    ;;
+  -n | n | --no-save)
+    noteNoSave
+    exit
+    ;;
+  -h | --help)
+    usage
+    exit
+    ;;
+  *)
+    # If an unknown option is provided, show the usage and exit
+    usage
+    exit
+    ;;
+  esac
+  shift
+done
+
+# Default action if no options are provided: open notes and save to Github
+note
