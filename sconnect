@@ -48,11 +48,5 @@ fi
 # ---------- interactive menu -------------------------------------------------
 echo "🔐  Select the SSH host you want to connect to:"
 
-select HOST in "${HOSTS[@]}"; do
-  if [[ -n "$HOST" ]]; then
-    echo "🚀  Connecting to '$HOST' …"
-    exec ssh "$HOST" # exec replaces the shell with ssh
-  else
-    echo "❗  Invalid selection – try again." >&2
-  fi
-done
+HOST=$(printf '%s\n' "${HOSTS[@]}" | fzf --height=40% --prompt='SSH > ') || exit
+exec ssh "$HOST"
