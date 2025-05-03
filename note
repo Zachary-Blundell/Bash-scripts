@@ -24,11 +24,15 @@ echo $file_path
 
 # go to notes dir
 cd $HOME/Nextcloud/Notes/
-# Verify that the todays note exists
+
+# Verify that the todays note exists i.e. created by the server daily_note script
 if [[ ! -f "${file_path}" ]]; then
-  echo "Error: notes folder '${notes_root}' is missing" >&2
-  exit 1
+  echo "Error: notes folder '${file_path}' is missing" >&2
+  sleep 1
+  nvim .
+else
+  nvim $file_path
 fi
-nvim $file_path
+
 # goBack
 cd "$OLDPWD"
