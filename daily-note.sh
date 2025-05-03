@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # create_daily_markdown.sh — create a daily Markdown note inside
 # --------------------------------------------------------------------
-set -euo pipefail
+set -eo pipefail
 
 # Root of log hierarchy
 notes_root="$HOME/Nextcloud/Notes/log"
@@ -21,6 +21,10 @@ get_quote() {
   if json=$(curl -fsSL "https://quoteslate.vercel.app/api/quotes/random?count=2"); then
     quote=$(echo "$json" | jq -r '.[0].quote')
     author=$(echo "$json" | jq -r '.[0].author')
+
+    echo $quote
+    echo $author
+    exit 1
     # quote2=$(echo "$json" | jq -r '.[1].quote')
     # author2=$(echo "$json" | jq -r '.[1].author')
   fi
