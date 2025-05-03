@@ -36,7 +36,7 @@ mapfile -t HOSTS < <(
       }
     }
   ' "$CONFIG_FILE" |
-    grep -v "github.com" |
+    grep -v "github.com" | # filter out github
     sort -u
 )
 
