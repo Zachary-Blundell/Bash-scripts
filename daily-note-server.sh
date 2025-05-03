@@ -24,22 +24,17 @@ get_quote() {
     author=$(echo "$json" | jq -r '.[0].author')
     # quote2=$(echo "$json" | jq -r '.[1].quote')
     # author2=$(echo "$json" | jq -r '.[1].author')
-  fi
-
-  # 2️⃣  Fallback: ZenQuotes (no tag filter, but good general corpus)
-  if [[ -z "$quote" || "$quote" == "null" ]]; then
+  else
+    # 2️⃣  Fallback: ZenQuotes (no tag filter, but good general corpus)
     if json=$(curl -fsSL "https://zenquotes.io/api/random"); then
       quote=$(echo "$json" | jq -r '.[0].q')
       author=$(echo "$json" | jq -r '.[0].a')
+    else
+      # 3️⃣  If everything failed, return a placeholder
+      quote="Could not fetch an inspirational quote today."
+      author=""
     fi
   fi
-
-  # 3️⃣  If everything failed, return a placeholder
-  if [[ -z "$quote" || "$quote" == "null" ]]; then
-    quote="Could not fetch an inspirational quote today."
-    author=""
-  fi
-
 }
 # --------------------------------------------------------------------
 # Date components
@@ -86,7 +81,7 @@ get_quote
   - [ ] Y
   - [ ] Z
 
-  ## Notes & Ideas
+  ## Notes / Ideas / Log 
 
 
   "
