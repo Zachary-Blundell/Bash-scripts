@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-
-# sconnect – pick an alias from ~/.ssh/config and connect to it
-# Works with GNU awk or any POSIX awk.
 #    __________ __  __   ______                            __
 #   / ___/ ___// / / /  / ____/___  ____  ____  ___  _____/ /_
 #   \__ \\__ \/ /_/ /  / /   / __ \/ __ \/ __ \/ _ \/ ___/ __/
 #  ___/ /__/ / __  /  / /___/ /_/ / / / / / / /  __/ /__/ /_
 # /____/____/_/ /_/   \____/\____/_/ /_/_/ /_/\___/\___/\__/
 # Author : Zachary Blundell
+# sconnect – pick an alias from ~/.ssh/config and connect to it
+# Works with GNU awk or any POSIX awk.
 
 set -euo pipefail
 
