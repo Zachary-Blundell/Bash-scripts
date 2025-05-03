@@ -1,7 +1,14 @@
-#!/usr/bin/env bash
-# create_daily_markdown.sh — create a daily Markdown note inside
-# Server version that uses rclone to send files
-# --------------------------------------------------------------------
+#!/bin/bash
+#     ____        _ __         _   __      __          __  ___      __
+#    / __ \____ _(_) /_  __   / | / /___  / /____     /  |/  /___ _/ /_____  _____
+#   / / / / __ `/ / / / / /  /  |/ / __ \/ __/ _ \   / /|_/ / __ `/ //_/ _ \/ ___/
+#  / /_/ / /_/ / / / /_/ /  / /|  / /_/ / /_/  __/  / /  / / /_/ / ,< /  __/ /
+# /_____/\__,_/_/_/\__, /  /_/ |_/\____/\__/\___/  /_/  /_/\__,_/_/|_|\___/_/
+#                 /____/
+# Author : Zachary Blundell
+# This script is used to create a daily Markdown note inside a log folder
+# intended to be run on the nextcloud server
+
 set -euo pipefail
 
 # Root of log hierarchy

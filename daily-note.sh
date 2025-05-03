@@ -1,6 +1,14 @@
-#!/usr/bin/env bash
-# create_daily_markdown.sh — create a daily Markdown note inside
-# --------------------------------------------------------------------
+#!/bin/bash
+#     ____        _ __         _   __      __          __  ___      __
+#    / __ \____ _(_) /_  __   / | / /___  / /____     /  |/  /___ _/ /_____  _____
+#   / / / / __ `/ / / / / /  /  |/ / __ \/ __/ _ \   / /|_/ / __ `/ //_/ _ \/ ___/
+#  / /_/ / /_/ / / / /_/ /  / /|  / /_/ / /_/  __/  / /  / / /_/ / ,< /  __/ /
+# /_____/\__,_/_/_/\__, /  /_/ |_/\____/\__/\___/  /_/  /_/\__,_/_/|_|\___/_/
+#                 /____/
+# Author : Zachary Blundell
+# This script is used to create a daily Markdown note inside a log folder
+# intended to be run locally
+
 set -eo pipefail
 
 # Root of log hierarchy
@@ -17,8 +25,8 @@ fi
 
 get_quote() {
   # 1️⃣  Try the QuoteSlate API
-  #https://quoteslate.vercel.app/
-  if json=$(curl -fsSL "https://quoteslate.vercel.app/api/quotes/random?count=2"); then
+  # https://quoteslate.vercel.app/
+  if json=$(curl -fsSL "https://quoteslate.vercel.app/api/quotes/random?count=1"); then
     quote=$(echo "$json" | jq -r '.[0].quote')
     author=$(echo "$json" | jq -r '.[0].author')
 
