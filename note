@@ -1,9 +1,9 @@
 #!/bin/bash
-#  _   _       _
-# | \ | | ___ | |_ ___  ___
-# |  \| |/ _ \| __/ _ \/ __|
-# | |\  | (_) | ||  __/\__ \
-# |_| \_|\___/ \__\___||___/
+#     _   __      __
+#    / | / /___  / /____  _____
+#   /  |/ / __ \/ __/ _ \/ ___/
+#  / /|  / /_/ / /_/  __(__  )
+# /_/ |_/\____/\__/\___/____/
 # Author : Zachary Blundell
 # This script is used for opening nextcloud notes and onpening todays note
 
