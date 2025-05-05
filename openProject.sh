@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-codeDir='/home/zaiquiri/Nextcloud/Code'
+codeDir='/home/zaiquiri/Code'
 
 if [[ ! -d "$codeDir" ]]; then
   echo "code directory $codeDir does not exist"
