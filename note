@@ -7,27 +7,34 @@
 # Author : Zachary Blundell
 # This script is used for opening nextcloud notes and onpening todays note
 
-day_num="$(date +'%d')"
-day_name_short="$(date +'%a')" # locale's abbreviated weekday name (e.g., Sun)
+root_note_path="${HOME}/Nextcloud/Notes/"
 
+# Date Info
+day_num="$(date +'%d')"
+day_name_short="$(date +'%a')"   # locale's abbreviated weekday name (e.g., Sun)
 month_num="$(date +'%m')"        # 01‑12 (two‑digit, leading zero)
 month_name_short="$(date +'%b')" # locale's abbreviated month name (e.g., Jan)
+year="$(date +'%Y')"             # four‑digit year
 
-year="$(date +'%Y')" # four‑digit year
-
+# Names
 month_dir="log/${year}/${month_num}(${month_name_short})"
-
 file_name="${day_num}(${day_name_short})-${month_num}-${year}.md"
+
+# Full path (from the root_note_path)
 file_path="${month_dir}/${file_name}"
 
-echo $file_path
-
-# go to notes dir
-cd $HOME/Nextcloud/Notes/
+# Go to notes dir
+if [[ ! -d "${root_note_path}" ]]; then # If the directory does not exist
+  echo "Error: Notes folder '${root_note_path}' is missing" >&2
+  exit 1
+else # The root path exists and we can go to it
+  cd root_note_path
+fi
 
 # Verify that the todays note exists i.e. created by the server daily_note script
-if [[ ! -f "${file_path}" ]]; then
-  echo "Error: notes folder '${file_path}' is missing" >&2
+if [[ ! -f "${file_path}" ]]; then # If the file does not exists
+  echo "Error: Note '${file_path}' is missing" >&2
+  echo "Opening at notes root" >&2
   sleep 1
   nvim .
 else
@@ -35,4 +42,4 @@ else
 fi
 
 # goBack
-cd "$OLDPWD"
+cd ${OLDPWD}
