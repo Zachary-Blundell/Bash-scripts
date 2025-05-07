@@ -9,31 +9,55 @@
 # Simple script for opening coding projects with Neovim
 
 set -euo pipefail
+clear
 
-readonly codeDir='/home/zaiquiri/Code'
+# Config
+readonly codeDir="$HOME/Code"
 
+# Sanity check
 if [[ ! -d "$codeDir" ]]; then
-  echo "code directory $codeDir does not exist" >&2
+  echo "Code directory $codeDir does not exist." >&2
   exit 1
 fi
 
-cd ${codeDir}
-# find Project
-readonly projectDir=$(
-  fd --type d --max-depth 1 . | fzf --prompt='Projects> ' \
-    --color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8 \
-    --color=fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc \
-    --color=marker:#b4befe,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8 \
-    --color=selected-bg:#45475a \
-    --color=border:#313244,label:#cdd6f4 \
-    --border="rounded" --border-label="Code Projects" \
-    --border-label-pos="0" --preview-window="border-rounded" \
-    --padding="2" --margin="10%" --marker="" \
-    --pointer="🚀" --separator="─" --scrollbar="│" --layout="reverse" \
-    --info="right"
+cd "$codeDir"
+
+# Build menu options
+mapfile -t projects < <(fd --type d --max-depth 1 . | sort)
+projects=("📁 Add New Project" "${projects[@]}")
+
+# Project selection
+selectedProject=$(
+  printf '%s\n' "${projects[@]}" | gum filter \
+    --placeholder="Search or add..." \
+    --indicator="🚀" \
+    --height=20 \
+    --header="Select a project"
 )
 
-if [ -n "${projectDir}" ]; then
-  cd "${codeDir}/${projectDir}"
+if [[ "$selectedProject" == "📁 Add New Project" ]]; then
+  # Prompt for new project name
+  newProject=$(gum input --placeholder="Enter new project name" --prompt="📂 New project name: ")
+
+  # Abort if empty
+  if [[ -z "$newProject" ]]; then
+    echo "❌ No name entered. Aborting."
+    exit 1
+  fi
+
+  # Confirm creation
+  if gum confirm "Create project folder: $codeDir/$newProject?"; then
+    mkdir -p "$codeDir/$newProject"
+    cd "$codeDir/$newProject"
+    nvim .
+  else
+    echo "🚫 Aborted by user."
+    exit 1
+  fi
+elif [[ -n "$selectedProject" ]]; then
+  # Open selected existing project
+  cd "$codeDir/$selectedProject"
   nvim .
+else
+  echo "❌ No directory entered. Aborting."
 fi
