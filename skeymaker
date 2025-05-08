@@ -1,0 +1,208 @@
+#!/bin/bash
+#    __________ __  __   __ __              __  ___      __
+#   / ___/ ___// / / /  / //_/__  __  __   /  |/  /___ _/ /_____  _____
+#   \__ \\__ \/ /_/ /  / ,< / _ \/ / / /  / /|_/ / __ `/ //_/ _ \/ ___/
+#  ___/ /__/ / __  /  / /| /  __/ /_/ /  / /  / / /_/ / ,< /  __/ /
+# /____/____/_/ /_/  /_/ |_\___/\__, /  /_/  /_/\__,_/_/|_|\___/_/
+#                              /____/
+# ------------------------------------------------------------
+# Interactive helper to gather parameters for generating an SSH
+# Features
+#   • Collects: key name, comment, type, optional passphrase
+#   • Validates input and re‑prompts instead of exiting
+#   • Confirmation summary before execution
+#   • Spinner progress while generating the key
+#   • Optional clipboard copy of the public key
+# ------------------------------------------------------------
+# Requirements:
+#   • gum (https://github.com/charmbracelet/gum)
+#   • ssh-keygen available in $PATH
+#   • One of: pbcopy, xclip, xsel, wl-copy   (for clipboard)
+# ------------------------------------------------------------
+
+set -euo pipefail
+
+# Display an error banner without terminating.
+err() {
+  gum style --foreground 1 "error: $1"
+}
+
+# Attempt to copy $1 to the clipboard if a tool is available.
+copy_to_clipboard() {
+  local content_file="$1"
+  if command -v wl-copy >/dev/null 2>&1; then
+    <"$content_file" wl-copy && return 0
+  elif command -v pbcopy >/dev/null 2>&1; then
+    <"$content_file" pbcopy && return 0
+  elif command -v xclip >/dev/null 2>&1; then
+    <"$content_file" xclip -selection clipboard && return 0
+  elif command -v xsel >/dev/null 2>&1; then
+    <"$content_file" xsel --clipboard --input && return 0
+  fi
+  return 1 # no clip util
+}
+
+main() {
+  clear
+
+  # ----------------------------------------
+  # Prompt: SSH key filename (validate & re‑prompt)
+  # ----------------------------------------
+  local key_name
+  while true; do
+    key_name=$(gum input \
+      --header "SSH Key Name" \
+      --placeholder "id_ed25519")
+
+    if [[ -z $key_name ]]; then
+      err "Key name cannot be empty"
+      continue
+    fi
+    if [[ $key_name == */* ]]; then
+      err "Key name must not contain '/'"
+      continue
+    fi
+    break
+  done
+
+  # ----------------------------------------
+  # Prompt: Comment to embed in the public key
+  # ----------------------------------------
+  local key_comment
+  while true; do
+    key_comment=$(gum input \
+      --header "Key Comment" \
+      --placeholder "you@example.com")
+
+    [[ -z $key_comment ]] && {
+      err "Key comment cannot be empty"
+      continue
+    }
+    break
+  done
+
+  # ----------------------------------------
+  # Prompt: Key type (interactive choice)
+  # ----------------------------------------
+  local key_type
+  key_type=$(gum choose \
+    --selected "rsa" \
+    dsa ecdsa ecdsa-sk ed25519 ed25519-sk rsa)
+
+  # ----------------------------------------
+  # Prompt: Optional passphrase
+  # ----------------------------------------
+  local key_passphrase="" passphrase_set="no"
+  if gum confirm "Protect the key with a passphrase?"; then
+    passphrase_set="yes"
+    while true; do
+      key_passphrase=$(gum input \
+        --password \
+        --header "Enter passphrase" \
+        --placeholder "passphrase")
+      [[ -z $key_passphrase ]] && {
+        err "Passphrase cannot be empty"
+        continue
+      }
+
+      local key_passphrase_confirm
+      key_passphrase_confirm=$(gum input \
+        --password \
+        --header "Confirm passphrase" \
+        --placeholder "re-enter passphrase")
+
+      [[ "$key_passphrase" != "$key_passphrase_confirm" ]] && {
+        err "Passphrases do not match"
+        continue
+      }
+      break
+    done
+  fi
+
+  # ----------------------------------------
+  # Compute paths & show confirmation summary
+  # ----------------------------------------
+  local ssh_dir="$HOME/.ssh"
+  local key_path="$ssh_dir/$key_name"
+
+  while true; do
+    echo
+    gum style --border normal --padding "1 2" --margin "0 0 1 0" \
+      "🛠  Summary" \
+      "File       : $key_path" \
+      "Type       : $key_type" \
+      "Comment    : $key_comment" \
+      "Passphrase : $passphrase_set"
+
+    if gum confirm "Proceed with key generation?"; then
+      break
+    else
+      if gum confirm "Would you like to start over?"; then
+        main
+        return 0 # restart wizard
+      else
+        echo "Cancelled."
+        exit 0
+      fi
+    fi
+  done
+
+  # Create ~/.ssh if it doesn't exist
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+
+  # Check for existing key files and re‑prompt on conflict
+  while [[ -e $key_path || -e ${key_path}.pub ]]; do
+    gum style --foreground 3 "warning: $key_path already exists."
+    if gum confirm "Overwrite?"; then
+      rm -f "$key_path" "${key_path}.pub"
+      break
+    else
+      # Ask for a different key name
+      err "Please choose a different key name."
+      while true; do
+        key_name=$(gum input \
+          --header "SSH Key Name" \
+          --placeholder "id_ed25519")
+        if [[ -z $key_name ]]; then
+          err "Key name cannot be empty"
+          continue
+        fi
+        if [[ $key_name == */* ]]; then
+          err "Key name must not contain '/'"
+          continue
+        fi
+        key_path="$ssh_dir/$key_name"
+        break
+      done
+    fi
+  done
+
+  # ----------------------------------------
+  # Generate the SSH key with spinner feedback
+  # ----------------------------------------
+  echo
+  if gum spin --spinner line --title "Generating SSH key" -- \
+    ssh-keygen -t "$key_type" -C "$key_comment" -f "$key_path" -N "$key_passphrase"; then
+    echo
+    gum style --border normal --padding "1 2" \
+      "✅  Key created:" \
+      "$key_path" \
+      "${key_path}.pub"
+
+    # Offer clipboard copy of the public key
+    if gum confirm "Copy public key to clipboard?"; then
+      if copy_to_clipboard "${key_path}.pub"; then
+        gum style --foreground 2 "Public key copied to clipboard."
+      else
+        gum style --foreground 3 "No clipboard utility found. Showing key below:"
+        echo
+        cat "${key_path}.pub"
+      fi
+    fi
+  else
+    err "ssh-keygen failed. Please try again."
+  fi
+}
+
+main "$@"
