@@ -7,7 +7,7 @@
 # Author : Zachary Blundell
 # This script is used for opening nextcloud notes and onpening todays note
 
-readonly root_note_path="${HOME}/Nextcloud/Notes/j"
+readonly root_note_path="${HOME}/Nextcloud/Notes/"
 
 # Date Info
 readonly day_num="$(date +'%d')"
