@@ -1,15 +1,15 @@
 #!/bin/bash
-# This is changes suspend options on laptop lid close suspend key press 
-function suspend_deactivated
-{
+# This is changes suspend options on laptop lid close suspend key press
+function suspend_deactivated {
+  echo "Suspend deactivated: Laptop will not suspend on lid close"
   sudo sed -i 's/\(HandleSuspendKey\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitch\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitchExternalPower\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo systemctl reload systemd-logind.service
   sudo systemctl daemon-reload
 }
-function suspend_activated
-{
+function suspend_activated {
+  echo "Suspend activated: Laptop will suspend on lid close"
   sudo sed -i 's/\(HandleSuspendKey\)=ignore/\1=suspend/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitch\)=ignore/\1=suspend/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitchExternalPower\)=ignore/\1=suspend/' /etc/systemd/logind.conf
@@ -17,29 +17,29 @@ function suspend_activated
   sudo systemctl daemon-reload
 }
 
-function help
-{
+function help {
   echo -e "-a | a | activate to have suspend on lid close active \n -d | d | deactivate to have suspend on lid close deactived"
 }
 
 while [ "$1" != "" ]; do
-    case $1 in
-        -a | a | activate )
-            suspend_activated
-            exit 
-            ;;
-        -d | d | deactivate)
-            suspend_deactivated
-            exit 
-            ;;
-        -h | --help | help )
-            help
-            exit 
-            ;;
-        * )
-            help
-            exit 
-    esac
-    shift
+  case $1 in
+  -a | a | activate)
+    suspend_activated
+    exit
+    ;;
+  -d | d | deactivate)
+    suspend_deactivated
+    exit
+    ;;
+  -h | --help | help)
+    help
+    exit
+    ;;
+  *)
+    help
+    exit
+    ;;
+  esac
+  shift
 done
 help
