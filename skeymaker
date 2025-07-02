@@ -206,6 +206,7 @@ main() {
     # ----------------------------------------
     # Offer to create ~/.ssh/config entry
     # ----------------------------------------
+    local added_alias="" # will hold alias if we add one
     if gum confirm "Add an entry to ~/.ssh/config for this key?"; then
       local config_file="$ssh_dir/config"
       touch "$config_file"
@@ -252,6 +253,29 @@ main() {
       } >>"$config_file"
 
       gum style --foreground 2 "Added entry for '$host_alias' to $config_file"
+      added_alias="$host_alias"
+    fi
+
+    # ----------------------------------------
+    # Offer to send the public key to the server using the config entry
+    # ----------------------------------------
+    if [[ -n $added_alias ]] && gum confirm "Send the public key to '$added_alias'?"; then
+      if command -v ssh-copy-id >/dev/null 2>&1; then
+        if gum spin --spinner line --title "Sending key to $added_alias" -- \
+          ssh-copy-id -i "${key_path}.pub" "$added_alias"; then
+          gum style --foreground 2 "Key copied to $added_alias via ssh-copy-id."
+        else
+          err "ssh-copy-id failed. You can try manually with:\ncat ${key_path}.pub | ssh $added_alias 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'"
+        fi
+      else
+        err "ssh-copy-id not found. Attempting manual copy."
+        if gum spin --spinner line --title "Sending key to $added_alias" -- \
+          sh -c "cat ${key_path}.pub | ssh $added_alias 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys'"; then
+          gum style --foreground 2 "Key copied to $added_alias using manual method."
+        else
+          err "Failed to copy key using manual method."
+        fi
+      fi
     fi
 
     # ----------------------------------------
