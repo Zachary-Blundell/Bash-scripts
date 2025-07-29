@@ -1,20 +1,20 @@
 #!/bin/bash
 # This is changes suspend options on laptop lid close suspend key press
 function suspend_deactivated {
-  echo "Suspend deactivated: Laptop will not suspend on lid close"
   sudo sed -i 's/\(HandleSuspendKey\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitch\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitchExternalPower\)=suspend/\1=ignore/' /etc/systemd/logind.conf
   sudo systemctl reload systemd-logind.service
   sudo systemctl daemon-reload
+  echo "Suspend deactivated: Laptop will not suspend on lid close"
 }
 function suspend_activated {
-  echo "Suspend activated: Laptop will suspend on lid close"
   sudo sed -i 's/\(HandleSuspendKey\)=ignore/\1=suspend/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitch\)=ignore/\1=suspend/' /etc/systemd/logind.conf
   sudo sed -i 's/\(HandleLidSwitchExternalPower\)=ignore/\1=suspend/' /etc/systemd/logind.conf
   sudo systemctl reload systemd-logind.service
   sudo systemctl daemon-reload
+  echo "Suspend activated: Laptop will suspend on lid close"
 }
 
 function help {
