@@ -1,147 +1,171 @@
 #!/bin/bash
 
-# File to check
-zshenv="$HOME/.zshenv"
-green='\033[0;32m'
-red='\033[0;31m'
-nc='\033[0m' # Not Color
+# Manage dotfiles: create ~/dotfiles, set $DOTFILES_DIR, push, stow, merge.
 
-# Function to ask for user confirmation {{{
+set -euo pipefail
+IFS=$'\n\t'
+
+###############################################################################
+# Constants
+###############################################################################
+readonly ZSHENV="${HOME}/.zshenv"
+
+readonly GREEN='\033[0;32m'
+readonly RED='\033[0;31m'
+readonly NC='\033[0m' # No Color
+
+###############################################################################
+# Logging helpers
+###############################################################################
+log() { printf '%b\n' "$*"; }
+log_info() { printf '%b\n' "${GREEN}%s${NC}\n" "$*"; }
+log_error() { printf '%b\n' "${RED}Error:${NC} $*" >&2; }
+
+###############################################################################
+# User-interaction helpers
+###############################################################################
 confirm() {
-  local message=$1
-  read -n 1 -p "$message (y/n): " user_input
-  echo
-  [[ "$user_input" =~ ^[Yy]$ ]]
-} # }}}
+  local prompt=${1:-"Continue"}
+  local reply
+  read -r -n1 -p "${prompt} (y/n): " reply
+  printf '\n'
+  [[ $reply =~ ^[Yy]$ ]]
+}
 
-printError() { # {{{
-  printf "${red}Error: $1${nc}\n"
-} # }}}
+pause() {
+  read -r -n1 -s -p "Press any key to continue…"
+  printf '\n'
+}
 
-check_dotfiles_dir() { # {{{
-  read -p "Please enter the path to your dotfiles directory/or where the folder should be created: $HOME/" user_path
-  dotfiles_path="$HOME/$user_path/dotfiles"
+###############################################################################
+# Dotfiles-directory helpers
+###############################################################################
+ask_dotfiles_path() {
+  local rel_path
+  read -r -p "Enter directory path relative to \$HOME (default: dotfiles): " rel_path
+  rel_path=${rel_path:-dotfiles}
+  printf '%s/dotfiles\n' "${HOME}/${rel_path%/}"
+}
 
-  # Check if directory exists or needs to be created
-  if [ ! -d "$dotfiles_path" ]; then
-    printError "Directory does not exist."
-    if confirm "Create the directory $dotfiles_path"; then
-      if [[ "$user_input" =~ ^[Yy]$ ]]; then
-        printf "Creating directory at ${green}$dotfiles_path...${nc}\n"
-        mkdir -p "$dotfiles_path"
-      else
-        echo "Exiting"
-        exit 1
-      fi
+ensure_dotfiles_dir() {
+  local path
+  path=$(ask_dotfiles_path)
+
+  if [[ -d $path ]]; then
+    log_info "Using dotfiles directory at $path"
+  else
+    log_error "Directory $path does not exist."
+    if confirm "Create $path?"; then
+      log_info "Creating directory…"
+      mkdir -p -- "$path"
+    else
+      log "Abort."
+      exit 1
     fi
+  fi
+  printf '%s\n' "$path"
+}
+
+export_dotfiles_dir() {
+  local path=$1
+
+  if grep -q '^export DOTFILES_DIR=' "$ZSHENV"; then
+    log_info "Updating DOTFILES_DIR in $ZSHENV"
+    sed -i "s|^export DOTFILES_DIR=.*|export DOTFILES_DIR=${path}|" "$ZSHENV"
   else
-    echo "dofiles directory found at $dotfiles_path"
+    log_info "Adding DOTFILES_DIR to $ZSHENV"
+    printf 'export DOTFILES_DIR=%s\n' "$path" >>"$ZSHENV"
   fi
-} # }}}
 
-create_env_variable() { # {{{
-  check_dotfiles_dir
+  log "Run 'source $ZSHENV' to apply in the current shell."
+}
 
-  # Check if the variable is already saved, if so update, if not create
-  if grep -q "^export DOTFILES_DIR=" "$zshenv"; then
-    echo "DOTFILES_DIR is already set in $zshenv."
-    printf "${green}Updating DOTFILES_DIR path.${nc}\n"
-    sed -i "s|\(export DOTFILES_DIR=\).*|\1$dotfiles_path|" $zshenv
+init_dotfiles_dir() {
+  # If DOTFILES_DIR already valid, keep it; otherwise prompt & export.
+  if [[ -n ${DOTFILES_DIR:-} && -d $DOTFILES_DIR ]]; then
+    log_info "Using dotfiles directory at $DOTFILES_DIR"
   else
-    echo "DOTFILES_DIR is not set in $zshenv."
-    printf "${green}Adding DOTFILES_DIR to $zshenv${nc}\n"
-    echo "export DOTFILES_DIR=$dotfiles_path" >>$zshenv
+    log_error "DOTFILES_DIR unset or invalid."
+    local new_path
+    new_path=$(ensure_dotfiles_dir)
+    export DOTFILES_DIR=$new_path
+    export_dotfiles_dir "$new_path"
   fi
+}
 
-  echo "To apply changes to your current terminal session, run:"
-  echo "source $zshenv"
-} # }}}
+###############################################################################
+# Git / Stow helpers
+###############################################################################
+push_dots() {
+  (
+    cd -- "$DOTFILES_DIR"
+    git add -A
+    local msg
+    read -r -p "Commit message (default: Backup): " msg
+    msg=${msg:-Backup}
+    git commit -m "$msg"
+    git push
+  )
+}
 
-# Function to initialize the dotfiles directory
-check_dotfiles_dir_env() { # {{{
-  if [ -z "$DOTFILES_DIR" ] || [ ! -d "$DOTFILES_DIR" ]; then
-    printError "DOTFILES_DIR is not set or the directory does not exist."
-    echo "Adding env to zshenv"
-    create_env_variable
-  else
-    printf "Using dotfiles directory at ${green}$DOTFILES_DIR${nc}\n"
-  fi
-} # }}}
+stow_dotfiles() {
+  (
+    cd -- "$DOTFILES_DIR"
+    stow .
+  )
+}
 
-# Function to push all changes with a customizable commit message
-push_dots() { # {{{
-  cd $DOTFILES_DIR
-  echo "Adding all changes..."
-  git add .
-  read -p "Enter a commit message (default: 'Backup script'): " commit_msg
-  commit_msg=${commit_msg:-"Backup script"}
-  git commit -m "$commit_msg"
-  echo "Pushing changes..."
-  git push
-  cd "$OLDPWD"
-} # }}}
+merge_files() {
+  (
+    cd -- "$DOTFILES_DIR"
+    local current_branch
+    current_branch=$(git symbolic-ref --quiet --short HEAD)
 
-# Function to use GNU Stow to stow all dotfiles
-stow_dotfiles() { # {{{
-  cd $DOTFILES_DIR
-  echo "Stowing dotfiles..."
-  stow .
-  cd "$OLDPWD"
-} # }}}
+    read -r -p "Branch to merge from (default: $current_branch): " branch
+    branch=${branch:-$current_branch}
 
-# Function to merge specified files or folders from a chosen branch
-merge_files() { # {{{
-  cd $DOTFILES_DIR
+    if [[ $branch == "$current_branch" ]]; then
+      log_error "Cannot merge from the current branch."
+      return 1
+    fi
 
-  current_branch=$(git symbolic-ref --short HEAD)
-  echo "Current branch: $current_branch"
+    local path
+    read -r -p "Path to file/folder to merge (e.g. .zshrc): " path
+    [[ -z $path ]] && {
+      log_error "No path provided."
+      return 1
+    }
 
-  read -p "Enter the branch to merge from (default: $current_branch): " target_branch
-  target_branch=${target_branch:-$current_branch}
+    log "Fetching and checking out $path from $branch…"
+    git fetch origin "$branch"
+    git checkout "$branch" -- "$path"
+    git add -- "$path"
 
-  if [ "$target_branch" == "$current_branch" ]; then
-    echo "You cannot merge from the same branch. Exiting..."
-    cd "$OLDPWD"
-    exit 1
-  fi
+    local msg
+    read -r -p "Merge commit message (default: Merged $path from $branch): " msg
+    msg=${msg:-"Merged $path from $branch"}
+    git commit -m "$msg"
+  )
+}
 
-  read -p "Enter the path of the file or folder to merge (e.g., '.zshrc' or '.config/nvim'): " path
-  if [ -z "$path" ]; then
-    echo "No path provided. Exiting..."
-    cd "$OLDPWD"
-    exit 1
-  fi
+###############################################################################
+# Main menu
+###############################################################################
+init_dotfiles_dir
 
-  echo "Syncing $path from $target_branch..."
-  git fetch origin
-  git checkout $target_branch -- "$path"
-  git add "$path"
-  read -p "Enter a commit message for the merge (default: 'Merged $path from $target_branch'): " merge_msg
-  merge_msg=${merge_msg:-"Merged $path from $target_branch"}
-  git commit -m "$merge_msg"
-
-  cd "$OLDPWD"
-} # }}}
-
-# Function to pause and wait for user confirmation
-pause() { # {{{
-  read -p "Press any key to continue..." -n1 -s
-} # }}}
-
-# Run check of the dotfiles enviroment variable being set
-check_dotfiles_dir_env
-
-# Run main menu
-while true; do # {{{
+while :; do
   clear
-  printf "Using dotfiles directory at ${green}$DOTFILES_DIR${nc}\n"
-  echo -e "\nSelect an option:"
-  echo "a) Push all changes to the repository with a custom commit message"
-  echo "s) Stow all dotfiles"
-  echo "m) Merge specified files or folders from a chosen branch"
-  echo "q) Exit"
-  read -p "Enter your choice: " choice
+  log_info "Active dotfiles directory: $DOTFILES_DIR"
+  cat <<'EOF'
 
+Select an option:
+  a) Push all changes (git add/commit/push)
+  s) Stow dotfiles                 (GNU stow)
+  m) Merge file/folder from branch (git checkout)
+  q) Quit
+
+EOF
+  read -r -p "Choice: " choice
   case $choice in
   a)
     push_dots
@@ -156,14 +180,179 @@ while true; do # {{{
     pause
     ;;
   q)
-    echo -e "Exiting...\n"
-    sleep 1
-    clear
+    log "Bye."
     break
     ;;
   *)
-    echo "Invalid option, please try again."
+    log_error "Invalid option."
+    pause
     ;;
   esac
-  # }}}
 done
+# # File to check
+# zshenv="$HOME/.zshenv"
+# green='\033[0;32m'
+# red='\033[0;31m'
+# nc='\033[0m' # Not Color
+#
+# # Function to ask for user confirmation {{{
+# confirm() {
+#   local message=$1
+#   read -n 1 -p "$message (y/n): " user_input
+#   echo
+#   [[ "$user_input" =~ ^[Yy]$ ]]
+# } # }}}
+#
+# printError() { # {{{
+#   printf "${red}Error: $1${nc}\n"
+# } # }}}
+#
+# check_dotfiles_dir() { # {{{
+#   read -p "Please enter the path to your dotfiles directory/or where the folder should be created: $HOME/" user_path
+#   dotfiles_path="$HOME/$user_path/dotfiles"
+#
+#   # Check if directory exists or needs to be created
+#   if [ ! -d "$dotfiles_path" ]; then
+#     printError "Directory does not exist."
+#     if confirm "Create the directory $dotfiles_path"; then
+#       if [[ "$user_input" =~ ^[Yy]$ ]]; then
+#         printf "Creating directory at ${green}$dotfiles_path...${nc}\n"
+#         mkdir -p "$dotfiles_path"
+#       else
+#         echo "Exiting"
+#         exit 1
+#       fi
+#     fi
+#   else
+#     echo "dofiles directory found at $dotfiles_path"
+#   fi
+# } # }}}
+#
+# create_env_variable() { # {{{
+#   check_dotfiles_dir
+#
+#   # Check if the variable is already saved, if so update, if not create
+#   if grep -q "^export DOTFILES_DIR=" "$zshenv"; then
+#     echo "DOTFILES_DIR is already set in $zshenv."
+#     printf "${green}Updating DOTFILES_DIR path.${nc}\n"
+#     sed -i "s|\(export DOTFILES_DIR=\).*|\1$dotfiles_path|" $zshenv
+#   else
+#     echo "DOTFILES_DIR is not set in $zshenv."
+#     printf "${green}Adding DOTFILES_DIR to $zshenv${nc}\n"
+#     echo "export DOTFILES_DIR=$dotfiles_path" >>$zshenv
+#   fi
+#
+#   echo "To apply changes to your current terminal session, run:"
+#   echo "source $zshenv"
+# } # }}}
+#
+# # Function to initialize the dotfiles directory
+# check_dotfiles_dir_env() { # {{{
+#   if [ -z "$DOTFILES_DIR" ] || [ ! -d "$DOTFILES_DIR" ]; then
+#     printError "DOTFILES_DIR is not set or the directory does not exist."
+#     echo "Adding env to zshenv"
+#     create_env_variable
+#   else
+#     printf "Using dotfiles directory at ${green}$DOTFILES_DIR${nc}\n"
+#   fi
+# } # }}}
+#
+# # Function to push all changes with a customizable commit message
+# push_dots() { # {{{
+#   cd $DOTFILES_DIR
+#   echo "Adding all changes..."
+#   git add .
+#   read -p "Enter a commit message (default: 'Backup script'): " commit_msg
+#   commit_msg=${commit_msg:-"Backup script"}
+#   git commit -m "$commit_msg"
+#   echo "Pushing changes..."
+#   git push
+#   cd "$OLDPWD"
+# } # }}}
+#
+# # Function to use GNU Stow to stow all dotfiles
+# stow_dotfiles() { # {{{
+#   cd $DOTFILES_DIR
+#   echo "Stowing dotfiles..."
+#   stow .
+#   cd "$OLDPWD"
+# } # }}}
+#
+# # Function to merge specified files or folders from a chosen branch
+# merge_files() { # {{{
+#   cd $DOTFILES_DIR
+#
+#   current_branch=$(git symbolic-ref --short HEAD)
+#   echo "Current branch: $current_branch"
+#
+#   read -p "Enter the branch to merge from (default: $current_branch): " target_branch
+#   target_branch=${target_branch:-$current_branch}
+#
+#   if [ "$target_branch" == "$current_branch" ]; then
+#     echo "You cannot merge from the same branch. Exiting..."
+#     cd "$OLDPWD"
+#     exit 1
+#   fi
+#
+#   read -p "Enter the path of the file or folder to merge (e.g., '.zshrc' or '.config/nvim'): " path
+#   if [ -z "$path" ]; then
+#     echo "No path provided. Exiting..."
+#     cd "$OLDPWD"
+#     exit 1
+#   fi
+#
+#   echo "Syncing $path from $target_branch..."
+#   git fetch origin
+#   git checkout $target_branch -- "$path"
+#   git add "$path"
+#   read -p "Enter a commit message for the merge (default: 'Merged $path from $target_branch'): " merge_msg
+#   merge_msg=${merge_msg:-"Merged $path from $target_branch"}
+#   git commit -m "$merge_msg"
+#
+#   cd "$OLDPWD"
+# } # }}}
+#
+# # Function to pause and wait for user confirmation
+# pause() { # {{{
+#   read -p "Press any key to continue..." -n1 -s
+# } # }}}
+#
+# # Run check of the dotfiles enviroment variable being set
+# check_dotfiles_dir_env
+#
+# # Run main menu
+# while true; do # {{{
+#   clear
+#   printf "Using dotfiles directory at ${green}$DOTFILES_DIR${nc}\n"
+#   echo -e "\nSelect an option:"
+#   echo "a) Push all changes to the repository with a custom commit message"
+#   echo "s) Stow all dotfiles"
+#   echo "m) Merge specified files or folders from a chosen branch"
+#   echo "q) Exit"
+#   read -p "Enter your choice: " choice
+#
+#   case $choice in
+#   a)
+#     push_dots
+#     pause
+#     ;;
+#   s)
+#     stow_dotfiles
+#     pause
+#     ;;
+#   m)
+#     merge_files
+#     pause
+#     ;;
+#   q)
+#     echo -e "Exiting...\n"
+#     sleep 1
+#     clear
+#     break
+#     ;;
+#   *)
+#     echo "Invalid option, please try again."
+#     ;;
+#   esac
+#   # }}}
+# done

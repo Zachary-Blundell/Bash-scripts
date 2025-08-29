@@ -1,0 +1,138 @@
+#!/bin/bash
+# Author : Zachary Blundell
+# sshfs_connect.sh — Mount an SSH host (from ~/.ssh/config) with sshfs,
+# open it in your $EDITOR, and clean up automatically.
+#
+# Features added compared to the original script:
+#   • Interactive FZF picker (still) but with a minimal theme.
+#   • mktemp‑based mount path so concurrent mounts don’t clash.
+#   • Automatic cleanup (trap EXIT / INT / TERM).
+#   • Optional remote sub‑path (-r/--remote-path) and custom mount dir (-m/--mount-dir).
+#   • Reconnect + follow_symlinks sshfs options for resilience.
+#   • Simple "--unmount" flag to detach the previous mount if you left it mounted.
+#   • Robust argument parsing & help text.
+#   • Proper directory test ("-d" instead of "-f") and prerequisite checks.
+
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  -r, --remote-path PATH   Remote path to mount (default: home directory)
+  -m, --mount-dir  DIR     Local mount directory (default: temporary dir)
+  -u, --unmount            Only unmount the last mount and exit
+  -h, --help               Show this help
+
+Examples:
+  $0                 # pick host, mount remote $HOME, open $EDITOR, unmount
+  $0 -r projects     # mount ~/projects on selected host
+  $0 -m ~/mnt/web    # use a persistent mount point
+EOF
+}
+
+require_bin() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "❌  '$1' is required."
+    exit 127
+  }
+}
+
+require_bin sshfs
+require_bin fzf
+require_bin fusermount3 || { alias fusermount3=fusermount; }
+
+CONFIG_FILE="${HOME}/.ssh/config"
+[[ -f $CONFIG_FILE ]] || {
+  echo "❌  $CONFIG_FILE not found."
+  exit 1
+}
+
+LAST_MOUNT_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/sshfs-connect.last"
+REMOTE_PATH=""
+MOUNT_DIR=""
+
+# ---------- parse arguments --------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  -r | --remote-path)
+    REMOTE_PATH=${2:-}
+    shift 2
+    ;;
+  -m | --mount-dir)
+    MOUNT_DIR=${2:-}
+    shift 2
+    ;;
+  -u | --unmount)
+    if [[ -f $LAST_MOUNT_FILE ]]; then
+      LAST_MNT=$(<"$LAST_MOUNT_FILE")
+      if mountpoint -q "$LAST_MNT"; then
+        echo "⏏️  Unmounting $LAST_MNT …"
+        fusermount3 -u "$LAST_MNT" && echo "Unmounted $LAST_MNT …"
+      fi
+      rm -f "$LAST_MOUNT_FILE"
+    else
+      echo "No previous mount recorded."
+    fi
+    exit
+    ;;
+  -h | --help)
+    usage
+    exit
+    ;;
+  *)
+    echo "Unknown arg: $1"
+    usage
+    exit 64
+    ;;
+  esac
+done
+
+# ---------- harvest host aliases --------------------------------------------
+mapfile -t HOSTS < <(
+  awk 'tolower($1)=="host"{for(i=2;i<=NF;i++)if($i!~/[*?]/)print $i}' "$CONFIG_FILE" |
+    grep -vE "^github\\.com$" |
+    sort -u
+)
+[[ ${#HOSTS[@]} -gt 0 ]] || {
+  echo "❌  No Host entries found."
+  exit 1
+}
+
+HOST=$(printf '%s\n' "${HOSTS[@]}" | fzf --height 40% --prompt='SSH Host > ' --layout=reverse) || exit 130
+
+REMOTE="${HOST}:${REMOTE_PATH:-.}"
+
+# ---------- mount ------------------------------------------------------------
+MOUNT_DIR=${MOUNT_DIR:-$(mktemp -d -t sshfs-${HOST}-XXXX)}
+if mountpoint -q "$MOUNT_DIR"; then
+  echo "ℹ️  $MOUNT_DIR is already a mount point."
+else
+  echo "🔐  Mounting $REMOTE ➜ $MOUNT_DIR …"
+  sshfs "$REMOTE" "$MOUNT_DIR" -o reconnect,follow_symlinks,ServerAliveInterval=15,ServerAliveCountMax=3
+fi
+
+echo "$MOUNT_DIR" >"$LAST_MOUNT_FILE"
+
+cleanup() {
+  # Unmount (retry with lazy option if busy)
+  if mountpoint -q "$MOUNT_DIR"; then
+    echo "⏏️  Unmounting $MOUNT_DIR …"
+    if ! fusermount3 -u "$MOUNT_DIR"; then
+      echo "⚠️  Device busy, trying lazy unmount …"
+      fusermount3 -uz "$MOUNT_DIR" || true
+    fi
+  fi
+  # Remove mount dir if it is now gone
+  rmdir "$MOUNT_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# ---------- open -------------------------------------------------------------
+cd "$MOUNT_DIR"
+${EDITOR:-vi} .
+cd "$OLDPWD" >/dev/null
+sleep 2
+
+# Cleanup runs via trap.

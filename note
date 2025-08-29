@@ -6,6 +6,7 @@
 # /_/ |_/\____/\__/\___/____/
 # Author : Zachary Blundell
 # This script is used for opening nextcloud notes and onpening todays note
+/home/zaiquiri/Code/Bash-scripts/daily-note.sh
 
 readonly root_note_path="${HOME}/Nextcloud/Notes/"
 
