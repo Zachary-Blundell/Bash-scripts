@@ -30,8 +30,8 @@ get_quote() {
     quote=$(echo "$json" | jq -r '.[0].quote')
     author=$(echo "$json" | jq -r '.[0].author')
 
-    echo $quote
-    echo $author
+    echo "$quote"
+    echo "$author"
     exit 1
     # quote2=$(echo "$json" | jq -r '.[1].quote')
     # author2=$(echo "$json" | jq -r '.[1].author')
