@@ -17,7 +17,7 @@ readonly month_name_short="$(date +'%b')" # locale's abbreviated month name (e.g
 readonly year="$(date +'%Y')"             # four‑digit year
 
 # Names
-readonly month_dir="log/${year}/${month_num}(${month_name_short})"
+readonly month_dir="Log/${year}/${month_num}(${month_name_short})"
 readonly file_name="${day_num}(${day_name_short})-${month_num}-${year}.md"
 
 # Full path (from the root_note_path)
