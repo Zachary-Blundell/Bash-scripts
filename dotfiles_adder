@@ -1,0 +1,252 @@
+#!/bin/bash
+#     ____        __  _____ __                        __    __
+#    / __ \____  / /_/ __(_) /__  _____    ____ _____/ /___/ /__  _____
+#   / / / / __ \/ __/ /_/ / / _ \/ ___/   / __ `/ __  / __  / _ \/ ___/
+#  / /_/ / /_/ / /_/ __/ / /  __(__  )   / /_/ / /_/ / /_/ /  __/ /
+# /_____/\____/\__/_/ /_/_/\___/____/____\__,_/\__,_/\__,_/\___/_/
+#                                  /_____/
+# Author : Zachary Blundell
+# Move dotfiles from ~/.config to ~/dotfiles/.config for backup,
+# ensure required tools are installed (in one go), and stow them.
+# Tools: stow, gum, fzf, fd
+
+set -euo pipefail
+
+die() {
+  echo "❌ $*" >&2
+  exit 1
+}
+
+# ---------- Package manager detection ----------
+detect_pkg_manager() {
+  for pm in apt-get apt dnf yum pacman zypper brew port; do
+    if command -v "$pm" >/dev/null 2>&1; then
+      echo "$pm"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Map command name -> package name per PM (so we can install in a single call)
+map_pkg_name() {
+  local pm="$1" cmd="$2"
+  case "$pm" in
+  apt | apt-get)
+    case "$cmd" in
+    fd) echo "fd-find" ;;
+    *) echo "$cmd" ;;
+    esac
+    ;;
+  dnf | yum)
+    case "$cmd" in
+    fd) echo "fd-find" ;;
+    *) echo "$cmd" ;;
+    esac
+    ;;
+  pacman | zypper | brew | port)
+    case "$cmd" in
+    fd) echo "fd" ;;
+    *) echo "$cmd" ;;
+    esac
+    ;;
+  *)
+    echo "$cmd"
+    ;;
+  esac
+}
+
+install_packages() {
+  local pm="$1"
+  shift
+  case "$pm" in
+  apt | apt-get)
+    sudo "$pm" update -y
+    sudo "$pm" install -y "$@"
+    ;;
+  dnf | yum)
+    sudo "$pm" install -y "$@"
+    ;;
+  pacman)
+    sudo pacman -Sy --noconfirm "$@"
+    ;;
+  zypper)
+    sudo zypper --non-interactive install "$@"
+    ;;
+  brew)
+    brew install "$@"
+    ;;
+  port)
+    sudo port install "$@"
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+# ---------- Ensure dependencies (install missing in ONE go) ----------
+ensure_dependencies() {
+  local -a REQUIRED_CMDS=("stow" "gum" "fzf" "fd")
+  local -a missing_cmds=()
+
+  # Special-case fd: consider it present if either 'fd' or 'fdfind' exists
+  for c in "${REQUIRED_CMDS[@]}"; do
+    if [[ "$c" == "fd" ]]; then
+      if ! command -v fd >/dev/null 2>&1 && ! command -v fdfind >/dev/null 2>&1; then
+        missing_cmds+=("$c")
+      fi
+    else
+      command -v "$c" >/dev/null 2>&1 || missing_cmds+=("$c")
+    fi
+  done
+
+  if ((${#missing_cmds[@]} == 0)); then
+    echo "✅ All required tools are already installed."
+  else
+    local pm
+    pm="$(detect_pkg_manager)" || die "No supported package manager found."
+
+    # Translate commands to package names for this PM
+    local -a pkgs=()
+    local cmd pkg seen
+    for cmd in "${missing_cmds[@]}"; do
+      pkg="$(map_pkg_name "$pm" "$cmd")"
+      # dedupe
+      seen=0
+      for p in "${pkgs[@]:-}"; do [[ "$p" == "$pkg" ]] && seen=1 && break; done
+      ((seen == 0)) && pkgs+=("$pkg")
+    done
+
+    echo "⬇️  Installing missing tools with $pm: ${pkgs[*]}"
+    install_packages "$pm" "${pkgs[@]}" || die "Failed to install one or more packages: ${pkgs[*]}"
+
+    # Debian/Ubuntu: create a user-local 'fd' shim if only 'fdfind' exists
+    if ! command -v fd >/dev/null 2>&1 && command -v fdfind >/dev/null 2>&1; then
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "$(command -v fdfind)" "$HOME/.local/bin/fd"
+      # Make sure this session can see it (persist in your shell rc for future)
+      export PATH="$HOME/.local/bin:$PATH"
+      echo "🔗 Created user-local shim: ~/.local/bin/fd -> $(command -v fdfind)"
+    fi
+
+    echo "✅ Tools installation complete."
+  fi
+}
+
+# ---------- Minimal UI helpers (gum → fzf → plain) ----------
+select_from_list() {
+  local header="$1"
+  shift
+  local items=("$@")
+
+  if command -v gum >/dev/null 2>&1; then
+    printf '%s\n' "${items[@]}" | gum filter \
+      --placeholder="Search..." \
+      --indicator="🚀" \
+      --height=20 \
+      --header="$header"
+    return $?
+  elif command -v fzf >/dev/null 2>&1; then
+    printf '%s\n' "${items[@]}" | fzf --prompt="$header > " --height=20 --reverse
+    return $?
+  else
+    echo "$header"
+    local i=1
+    for it in "${items[@]}"; do
+      printf '%2d) %s\n' "$i" "$it"
+      ((i++))
+    done
+    printf 'Select a number (or 0 to cancel): '
+    local choice
+    read -r choice
+    [[ "$choice" =~ ^[0-9]+$ ]] || return 1
+    ((choice == 0)) && return 1
+    ((choice >= 1 && choice <= ${#items[@]})) || return 1
+    echo "${items[choice - 1]}"
+  fi
+}
+
+ensure_exists() {
+  local path="$1"
+  if [[ ! -e "$path" ]]; then
+    if command -v gum >/dev/null 2>&1; then
+      gum confirm "The path '$path' does not exist. Create it?" && {
+        mkdir -p "$path"
+        echo "📁 Created '$path'."
+      } || die "Aborting."
+    else
+      read -r -p "Create '$path'? [y/N] " reply
+      [[ "$reply" =~ ^([yY]|[yY][eE][sS])$ ]] && {
+        mkdir -p "$path"
+        echo "📁 Created '$path'."
+      } || die "Aborting."
+    fi
+  fi
+}
+
+# ---------- Config ----------
+readonly mainConfig="$HOME/.config"
+readonly backupRoot="$HOME/dotfiles"
+readonly backupConfig="$backupRoot/.config"
+
+clear
+ensure_dependencies
+
+# Sanity check
+[[ -d "$mainConfig" ]] || die "The main dotfiles directory $mainConfig does not exist."
+ensure_exists "$backupRoot"
+ensure_exists "$backupConfig"
+
+# ---------- Main loop ----------
+while true; do
+  cd "$mainConfig"
+
+  # Only real directories (exclude symlinks)
+  mapfile -t dotsInConfig < <(
+    for p in "$mainConfig"/*; do
+      [[ -d "$p" && ! -L "$p" ]] && printf '%s\n' "$(basename "$p")"
+    done | sort
+  )
+  dotsInConfig=("❌ Exit" "${dotsInConfig[@]}")
+
+  selectedDot="$(select_from_list 'Select a dot' "${dotsInConfig[@]}")" || {
+    echo "❌ No selection made. Exiting."
+    exit 1
+  }
+
+  if [[ "$selectedDot" == "❌ Exit" ]]; then
+    echo "👋 Bye."
+    exit 0
+  fi
+
+  # Safety checks
+  if [[ -L "$mainConfig/$selectedDot" ]]; then
+    echo "⚠️  '$selectedDot' is already a symlink. Skipping."
+    continue
+  fi
+
+  if [[ -e "$backupConfig/$selectedDot" ]]; then
+    if command -v gum >/dev/null 2>&1; then
+      gum confirm "'$backupConfig/$selectedDot' exists. Overwrite?" && rm -rf -- "${backupConfig:?}/${selectedDot}" || {
+        echo "⏭️  Skipping."
+        continue
+      }
+    else
+      read -r -p "'$backupConfig/$selectedDot' exists. Overwrite? [y/N] " reply
+      [[ "$reply" =~ ^([yY]|[yY][eE][sS])$ ]] && rm -rf -- "${backupConfig:?}/${selectedDot}" || {
+        echo "⏭️  Skipping."
+        continue
+      }
+    fi
+  fi
+
+  echo "📦 Moving '$selectedDot' to backup..."
+  mv -- "$mainConfig/$selectedDot" "$backupConfig/"
+
+  echo "🔗 Stowing..."
+  cd "$backupRoot"
+  stow -t "$HOME" .
+
+  echo "✅ Done with '$selectedDot'."
+done

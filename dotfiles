@@ -1,0 +1,177 @@
+#!/bin/bash
+# Main Dotfiles Manager
+# Orchestrates actions like adding, removing, syncing, and auditing dotfiles.
+# Calls standalone scripts when available (e.g., dotfiles_adder).
+# For unimplemented actions, prints a "future behavior" message.
+
+set -euo pipefail
+
+# -------------------------
+# Utilities
+# -------------------------
+die() {
+  echo "❌ $*" >&2
+  exit 1
+}
+
+select_menu() {
+  # Usage: select_menu "Header" "${options[@]}"
+  local header="$1"
+  shift
+  local options=("$@")
+
+  if command -v gum >/dev/null 2>&1; then
+    gum choose --header="$header" "${options[@]}"
+    return $?
+  elif command -v fzf >/dev/null 2>&1; then
+    printf '%s\n' "${options[@]}" | fzf --prompt="$header > " --height=20 --reverse
+    return $?
+  else
+    echo "$header"
+    local i=1
+    for it in "${options[@]}"; do
+      printf '%2d) %s\n' "$i" "$it"
+      ((i++))
+    done
+    printf 'Select a number (or 0 to exit): '
+    local choice
+    read -r choice
+    [[ "$choice" =~ ^[0-9]+$ ]] || return 1
+    ((choice == 0)) && return 1
+    ((choice >= 1 && choice <= ${#options[@]})) || return 1
+    echo "${options[choice - 1]}"
+  fi
+}
+
+# find a sibling or PATH script named <name> or <name>.sh
+find_script() {
+  local name="$1"
+  local here
+  here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+  for cand in "$here/$name" "$here/${name}.sh"; do
+    [[ -f "$cand" ]] && {
+      echo "$cand"
+      return 0
+    }
+  done
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  if command -v "${name}.sh" >/dev/null 2>&1; then
+    command -v "${name}.sh"
+    return 0
+  fi
+  return 1
+}
+
+run_script_or_todo() {
+  # run_script_or_todo <script_name> "<future description>"
+  local name="$1"
+  shift
+  local future="$*"
+  if script_path="$(find_script "$name")"; then
+    echo "▶️  Running: $name"
+    if [[ -x "$script_path" ]]; then
+      "$script_path"
+    else
+      bash "$script_path"
+    fi
+  else
+    echo "📝 TODO: $future"
+  fi
+}
+
+trap 'echo; echo "👋 Exiting."; exit 0' INT
+
+# -------------------------
+# Start
+# -------------------------
+clear
+
+# -------------------------
+# Menu loop
+# -------------------------
+while true; do
+  echo "🧰 Dotfiles Manager"
+  echo
+
+  options=(
+    "Add dotfiles (select dirs and stow) "
+    "Remove dotfiles (unstow/remove selection) "
+    "Restow all (reapply symlinks) "
+    "Sync: pull latest from remote "
+    "Sync: commit & push local changes "
+    "Audit: list managed vs unmanaged configs "
+    "Fix: relink broken symlinks "
+    "Bootstrap a new machine "
+    "Exit"
+  )
+
+  choice="$(select_menu 'Pick an action' "${options[@]}")" || {
+    echo "👋 Bye."
+    exit 0
+  }
+  case "$choice" in
+  "Add dotfiles (select dirs and stow) ")
+    # Implemented elsewhere as your existing script:
+    run_script_or_todo "dotfiles_adder" \
+      "Add dotfiles by moving real directories from ~/.config into \$DOTFILES_DIR/.config and stowing them into place."
+    ;;
+
+  "Remove dotfiles (unstow/remove selection) ")
+    run_script_or_todo "dotfiles_remover" \
+      "Unstow selected packages, remove symlinks from \$HOME, and optionally restore originals from \$DOTFILES_DIR/.config."
+    ;;
+
+  "Restow all (reapply symlinks) ")
+    run_script_or_todo "dotfiles_restow" \
+      "Run 'stow -t \$HOME .' from \$DOTFILES_DIR to reapply all symlinks and reconcile drift."
+    ;;
+
+  "Sync: pull latest from remote ")
+    run_script_or_todo "dotfiles_sync_pull" \
+      "Run 'git -C \$DOTFILES_DIR pull --rebase --autostash' and restow to update local setup from the remote repo."
+    ;;
+
+  "Sync: commit & push local changes ")
+    run_script_or_todo "dotfiles_sync_push" \
+      "Stage changes under \$DOTFIELDS_DIR, prompt for a commit message, commit, and push to the configured remote."
+    ;;
+
+  "Audit: list managed vs unmanaged configs ")
+    run_script_or_todo "dotfiles_audit" \
+      "Compare \$HOME/.config against \$DOTFILES_DIR/.config: show real dirs not under stow, symlinks, and untracked files."
+    ;;
+
+  "Fix: relink broken symlinks ")
+    run_script_or_todo "dotfiles_fix_links" \
+      "Find dead symlinks pointing into \$DOTFILES_DIR and attempt to restow or clean them safely after confirmation."
+    ;;
+
+  "Bootstrap a new machine ")
+    run_script_or_todo "dotfiles_bootstrap" \
+      "Install required tools, clone the dotfiles repo, and stow a default profile (shell, editor, terminal, etc.)."
+    ;;
+
+  "Exit")
+    echo "👋 Bye."
+    exit 0
+    ;;
+  esac
+
+  echo
+  if command -v gum >/dev/null 2>&1; then
+    gum confirm "Run another action?" || {
+      echo "👋 Done."
+      exit 0
+    }
+  else
+    read -r -p "Run another action? [y/N] " again
+    [[ "$again" =~ ^([yY]|[yY][eE][sS])$ ]] || {
+      echo "👋 Done."
+      exit 0
+    }
+  fi
+  clear
+done
