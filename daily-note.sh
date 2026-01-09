@@ -12,7 +12,7 @@
 set -eo pipefail
 
 # Root of log hierarchy
-notes_root="$HOME/Nextcloud/Notes/log"
+notes_root="$HOME/Nextcloud/Notes/Log"
 
 # Verify that the root directory exists
 if [[ ! -d "${notes_root}" ]]; then
