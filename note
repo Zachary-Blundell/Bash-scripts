@@ -31,11 +31,12 @@ else # The root path exists and we can go to it
   cd ${root_note_path}
 fi
 
+daily-note
 # Verify that the todays note exists i.e. created by the server daily_note script
 if [[ ! -f "${file_path}" ]]; then # If the file does not exists
   echo "Error: Note '${file_path}' is missing" >&2
   echo "Opening at notes root" >&2
-  sleep 1
+  sleep .5
   nvim .
 else
   nvim $file_path
