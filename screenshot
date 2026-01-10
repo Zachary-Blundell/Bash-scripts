@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+
+
+# # Default options
+# copy=true
+# fullscreen=false
+# outdir="$HOME/Photos/Screenshots/"
+# fname="screenshot-$(date +%Y-%m-%d_%H-%M-%S.%N).png"
+#
+# outfile="$outdir/$fname"
+#
+#
+# mkdir -p "$outdir"
+#
+# usage() { echo "Usage: shotedit [-o path] [-c] [-f] [-h]" ; }
+#
+#
+# while getopts ":o:cfh" opt; do
+#   case "$opt" in
+#     o) outfile="$OPTARG" ;;
+#     c) copy=true ;;
+#     f) fullscreen=true ;;
+#     h) usage; exit 0 ;;
+#     :) echo "Option -$OPTARG requires an argument" >&2; usage; exit 2 ;;
+#     \?) echo "Unknown option: -$OPTARG" >&2; usage; exit 2 ;;
+#   esac
+# done
+#
+#
+# if [[1 -e 2]]; then
+#   echo -e "Here is ${outfile}"
+# fi
+
+echo "End of script"
+# $sc=Screenshot
+# $d = [$sc|Save-to-disk]
+# # Optional: Save-to-disk captures (uses HYPRSHOT_DIR)
+# binddl = $mainMod, Y,              $d region -> file,       exec, hyprshot -m region
+# binddl = $mainMod SHIFT, Y,       $d active window -> file, exec, hyprshot -m window -m active
+#
+# $d = [$sc|Clipboard]
+# # Clipboard captures
+# binddl = $mainMod CTRL, Y,       $d region -> clipboard,       exec, hyprshot -m region --clipboard-only
+# binddl = $mainMod CTRL SHIFT, Y, $d active window -> clipboard, exec, hyprshot -m window -m active --clipboard-only
+#
+echo -n "Enter a number: "
+
+read number
+
+if [ $number -eq 0 ]; then
+
+echo "You entered zero. Zero is an even number."
+
+elif [ $(($number % 2)) -eq 0 ]
+
+then
+
+echo "You entered $number. It is an even number."
+
+else
+
+echo "You entered $number. It is an odd number."
+
+fi
